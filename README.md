@@ -18,18 +18,15 @@ The provider must accept `x-api-key` authentication and return compatible JSON a
 
 **Security / production restriction:** Role selection is not real authentication. Until server-side admin login/authorization and an appropriately restricted provider allowlist are implemented, this public-facing connector must not be used with production payroll credentials. The connector does not save or automatically refresh credentials or sync edits back to the provider.
 
-## Metabase connection — blank fields
+## Metabase connection — three fields
 
-Open **Admin Panel → Metabase Connection**. On a fresh page all credential boxes are blank:
+Open **Admin Panel → Metabase Connection**. Three input boxes appear, all blank:
+1. **Metabase URL:** Enter your organization's approved Metabase link.
+2. **X-API-Key:** Enter the key assigned by Metabase. This is required for the current dashboard integration.
+3. **Metabase Password (optional):** This is not required when authenticating with X-API-Key and is not transmitted to the connector. Password-only authentication is not supported without a username, which was deliberately removed from the interface.
 
-- **Metabase URL** — paste your Metabase website URL (for this workspace, the approved instance is `https://metabase.dev.aioapp.com`). A full link to a Metabase dashboard also works; the server uses the origin only.
-- **X-API-Key** — paste your API key for key-based authentication, **or**
-- **Metabase Username / Email** and **Metabase Password** — use both for account/session authentication.
+Click **Test Authentication** to verify the API key. Use **Find Saved Questions** to locate restaurant and payroll reports accessible to your Metabase account. Select them under Data sources, then **Load & Import Data** to populate the dashboard. The default restaurant import runs the authorized database 4 restaurant query if no restaurant question is chosen. Payroll runs and approval deadlines only appear if an accessible payroll source provides them.
 
-If both authentication methods are entered, the API key is used. Click **Test Connection** to check credentials, **Find Saved Questions** to list reports, and **Connect & Import** to load accessible restaurant/payroll records. Saved question IDs can be chosen under the collapsed **Optional: Metabase data sources** section.
+The app does **not** invent missing payroll dates. Imports are read-only and browser-local; matching AIO Buddy assignments and notes are preserved on repeat imports. API keys are kept in tab memory, not exported or saved in local storage. Real-time automatic syncing needs a backend scheduler and database.
 
-The input boxes start empty and credentials are only held temporarily in tab memory, not written to local storage or GitHub. The backend validates the entered URL against its allowlisted Metabase host; additional approved hosts can be configured via the optional `METABASE_ALLOWED_HOSTS` environment variable, but the default instance requires no Vercel URL setting.
-
-A successful authentication test does not guarantee access to database 4 or specific saved questions. Those permissions are checked when importing. The default restaurant query is `SELECT * FROM restaurant` on Metabase database 4; payroll deadlines require an accessible payroll saved question.
-
-**Security:** Viewer/Editor/Admin role selection is only a demo and does not protect the server-side API endpoint. Restrict access to the deployment and implement genuine server-side authorization before using live payroll credentials or sensitive data.
+**Security:** The role selector is currently only a demo and does not enforce server-side Admin authorization. Do not enter live production keys into a public deployment until access is protected. The backend accepts only approved Metabase hosts.
