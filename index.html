@@ -172,12 +172,12 @@ async function callProvider(testOnly,discoverOnly=false){
       const panel=$('#apiPreview');if(panel)panel.textContent=detail;
       if(confirm('Import '+result.restaurants.length+' restaurants and '+result.runs.length+' payroll runs? Existing local comments and AIO Buddy assignments will be kept for matching records.')){
         const existingRestaurants=new Map(db.restaurants.map(r=>[String(r.id),r]));
-        const existingRuns=new Map(db.runs.map(r=>[String(r.id),r]));
+        const existingRuns=new Map(db.runs.map(r=>[String(r.restaurantId)+'::'+String(r.id),r]));
         const mergedRestaurants=result.restaurants.map(r=>{const prev=existingRestaurants.get(String(r.id));return {...r,buddyId:r.buddyId||prev?.buddyId||'',notes:Array.isArray(prev?.notes)?prev.notes:[]}});
-        const mergedRuns=result.runs.map(r=>{const prev=existingRuns.get(String(r.id));return {...r,comments:[...(Array.isArray(prev?.comments)?prev.comments:[]),...(Array.isArray(r.comments)?r.comments:[])].slice(-100)}});
+        const mergedRuns=result.runs.map(r=>{const prev=existingRuns.get(String(r.restaurantId)+'::'+String(r.id));const notes=[...(Array.isArray(prev?.comments)?prev.comments:[])];for(const comment of (Array.isArray(r.comments)?r.comments:[])){if(!notes.some(n=>n.text===comment.text&&n.cycle===comment.cycle))notes.push(comment)}return {...r,comments:notes.slice(-100)}});
         importPayload({restaurants:mergedRestaurants,runs:mergedRuns,buddies:result.buddies.length?result.buddies:db.buddies});
         apiSession.lastImport=new Date().toISOString();
-        toast('Metabase records imported.');
+        toast(result.runs.length?'Metabase restaurants and payroll runs imported.':'Restaurants imported. No payroll runs were supplied by the selected Metabase source.');
       }
     }
   }catch(err){
