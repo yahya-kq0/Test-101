@@ -3,16 +3,29 @@
 // The browser supplies credentials per request; this handler never persists them.
 // SECURITY: This app's role selector is not authenticated. Use only with a secured
 // deployment until real server-side login and authorization are implemented.
-const BASE='https://metabase.dev.aioapp.com';
+// The dashboard accepts a user-entered URL; limit requests to the approved
+// Metabase instance to avoid exposing an unauthenticated arbitrary HTTP proxy.
+function providerBase(input) {
+  if(typeof input!=='string'||!input.trim()||input.length>2048)
+    throw Object.assign(new Error('Enter your Metabase URL.'),{code:'INVALID_URL'});
+  let parsed;
+  try{parsed=new URL(input.trim());}
+  catch{throw Object.assign(new Error('Enter a valid HTTPS Metabase URL.'),{code:'INVALID_URL'});}
+  const hosts=['metabase.dev.aioapp.com',...(process.env.METABASE_ALLOWED_HOSTS||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)];
+  if(parsed.protocol!=='https:'||parsed.username||parsed.password||
+     parsed.port&&parsed.port!=='443'||!hosts.includes(parsed.hostname.toLowerCase()))
+    throw Object.assign(new Error('This URL is not an approved Metabase server. Use your organization’s Metabase link.'),{code:'INVALID_URL'});
+  return parsed.origin;
+}
 function failure(res, status, code, message) {
   res.setHeader('Cache-Control','no-store');
   return res.status(status).json({code,error:message});
 }
-async function query(path,method,headers,body) {
+async function query(base,path,method,headers,body) {
   const abort=new AbortController();
   const timer=setTimeout(()=>abort.abort(),15000);
   try {
-    const response=await fetch(BASE+path,{
+    const response=await fetch(base+path,{
       method,headers:{Accept:'application/json',...headers,...(body===undefined?{}:{'Content-Type':'application/json'})},
       ...(body===undefined?{}:{body:JSON.stringify(body)}),
       redirect:'error',cache:'no-store',signal:abort.signal
@@ -93,6 +106,7 @@ export default async function handler(req,res) {
   const mode=input.mode==='password'?'password':'key';
   const action=['fetch','discover'].includes(input.action)?input.action:'test';
   try {
+    const base=providerBase(input.url);
     const headers={};
     if(mode==='key'){
       if(typeof input.key!=='string'||!input.key.trim()||input.key.length>4096)
@@ -103,17 +117,17 @@ export default async function handler(req,res) {
          typeof input.password!=='string'||!input.password||
          input.username.length>320||input.password.length>4096)
         return failure(res,400,'MISSING_LOGIN','Enter your Metabase username and password.');
-      const session=await query('/api/session','POST',{},{
+      const session=await query(base,'/api/session','POST',{},{
         username:input.username.trim(),password:input.password
       });
       if(typeof session.id!=='string'||!session.id)
         return failure(res,502,'SESSION','Metabase did not return a login session.');
       headers['X-Metabase-Session']=session.id;
     }
-    const me=await query('/api/user/current','GET',headers);
+    const me=await query(base,'/api/user/current','GET',headers);
     const identity={name:me.common_name||me.first_name||me.email||'Metabase user'};
     if(action==='discover'){
-      const list=await query('/api/card','GET',headers);
+      const list=await query(base,'/api/card','GET',headers);
       if(!Array.isArray(list))return failure(res,502,'CARD_LIST','Metabase did not return a saved-question list.');
       return res.status(200).json({
         authenticated:true,identity,
@@ -127,13 +141,13 @@ export default async function handler(req,res) {
     const restaurantCardId=cardId(input.restaurantCardId,'restaurant question ID');
     const payrollCardId=cardId(input.payrollCardId,'payroll question ID');
     const restaurantResponse=restaurantCardId?
-      await query('/api/card/'+restaurantCardId+'/query/json','POST',headers,{}):
-      await query('/api/dataset','POST',headers,{database:4,type:'native',native:{query:'SELECT * FROM restaurant'}});
+      await query(base,'/api/card/'+restaurantCardId+'/query/json','POST',headers,{}):
+      await query(base,'/api/dataset','POST',headers,{database:4,type:'native',native:{query:'SELECT * FROM restaurant'}});
     const restaurantRows=toRows(restaurantResponse);
     const rs=restaurants(restaurantRows);
     let runs=[];
     if(payrollCardId){
-      const payrollResponse=await query('/api/card/'+payrollCardId+'/query/json','POST',headers,{});
+      const payrollResponse=await query(base,'/api/card/'+payrollCardId+'/query/json','POST',headers,{});
       runs=payrollRuns(toRows(payrollResponse),new Set(rs.map(r=>r.id)));
     }
     return res.status(200).json({
@@ -150,6 +164,6 @@ export default async function handler(req,res) {
     const code=e.code|| (e.name==='AbortError'?'TIMEOUT':'NETWORK');
     const message=e.name==='AbortError'?'Metabase request timed out.':
       e.code?e.message:'Metabase could not be reached from the server. Check access restrictions.';
-    return failure(res,code==='METABASE_HTTP_401'?401:code==='METABASE_HTTP_403'?403:502,code,message);
+    return failure(res,code==='INVALID_URL'?400:code==='METABASE_HTTP_401'?401:code==='METABASE_HTTP_403'?403:502,code,message);
   }
 }
