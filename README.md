@@ -18,16 +18,18 @@ The provider must accept `x-api-key` authentication and return compatible JSON a
 
 **Security / production restriction:** Role selection is not real authentication. Until server-side admin login/authorization and an appropriately restricted provider allowlist are implemented, this public-facing connector must not be used with production payroll credentials. The connector does not save or automatically refresh credentials or sync edits back to the provider.
 
-## Metabase integration (updated)
+## Metabase connection — blank fields
 
-In **Admin Panel → Metabase Integration**, the Metabase host is preset to `https://metabase.dev.aioapp.com`.
+Open **Admin Panel → Metabase Connection**. On a fresh page all credential boxes are blank:
 
-1. Choose **X-API-Key** and enter your key, OR choose **Email / Username + Password** and enter your Metabase login. Only one authentication method is needed.
-2. Click **Test Authentication**. This verifies credentials with `GET /api/user/current` without running a dataset query.
-3. Click **Find Saved Questions** to list accessible Metabase questions, then select your Restaurant and Payroll questions where available. Alternatively, enter their numeric question IDs manually.
-4. Click **Load & Import Data**. By default, restaurant data uses the user-provided SQL query `SELECT * FROM restaurant` on Metabase database 4. The payroll question is optional, but a matching payroll source is required to populate payroll dates and approval deadlines.
-5. If authentication succeeds but importing fails with **403**, the account does not have adequate permissions to run the source query. Request Metabase read/query access for the database or use an accessible saved question.
+- **Metabase URL** — paste your Metabase website URL (for this workspace, the approved instance is `https://metabase.dev.aioapp.com`). A full link to a Metabase dashboard also works; the server uses the origin only.
+- **X-API-Key** — paste your API key for key-based authentication, **or**
+- **Metabase Username / Email** and **Metabase Password** — use both for account/session authentication.
 
-Credentials are sent through Vercel's `/api/connect` serverless function for each action and held only in the current browser tab's memory. Imported records are kept in the browser's local storage, not written back to Metabase. The connector does not auto-sync. Check that your saved question returns fields such as restaurant ID, payroll start and end dates, approval date, processing date, and payday.
+If both authentication methods are entered, the API key is used. Click **Test Connection** to check credentials, **Find Saved Questions** to list reports, and **Connect & Import** to load accessible restaurant/payroll records. Saved question IDs can be chosen under the collapsed **Optional: Metabase data sources** section.
 
-**Production security:** This deployment uses an unprotected role selector, not server-enforced authentication. Do not enter real production API keys or account passwords in a public deployment. Protect the deployment and implement authenticated Admin access before using sensitive payroll data.
+The input boxes start empty and credentials are only held temporarily in tab memory, not written to local storage or GitHub. The backend validates the entered URL against its allowlisted Metabase host; additional approved hosts can be configured via the optional `METABASE_ALLOWED_HOSTS` environment variable, but the default instance requires no Vercel URL setting.
+
+A successful authentication test does not guarantee access to database 4 or specific saved questions. Those permissions are checked when importing. The default restaurant query is `SELECT * FROM restaurant` on Metabase database 4; payroll deadlines require an accessible payroll saved question.
+
+**Security:** Viewer/Editor/Admin role selection is only a demo and does not protect the server-side API endpoint. Restrict access to the deployment and implement genuine server-side authorization before using live payroll credentials or sensitive data.
