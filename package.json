@@ -1,0 +1,1 @@
+{"name":"payroll-atlas","version":"3.0.0","private":true,"scripts":{"test":"node --check api/auth.js && node --check api/connect.js && node --check api/payroll.js && node --check tests/current-ui.js"},"engines":{"node":">=20"}}
