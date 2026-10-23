@@ -38,13 +38,18 @@ export default async function handler(req,res){
   let url;
   try{url=await validProviderUrl(req.body?.url);}
   catch(err){return res.status(400).json({error:err.message||'Invalid provider URL.'});}
+  // This integration is intentionally scoped to the user's supplied Metabase instance
+  // and the read-only restaurant query; do not accept arbitrary SQL from the browser.
+  if(url.hostname!=='metabase.dev.aioapp.com' || url.pathname!=='/api/dataset')
+    return res.status(400).json({error:'Use the Metabase dataset URL: https://metabase.dev.aioapp.com/api/dataset'});
   try{
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),12000);
     let upstream;
     try{upstream=await fetch(url.toString(),{
-      method:'GET',
-      headers:{'x-api-key':key,'Accept':'application/json'},
+      method:'POST',
+      headers:{'x-api-key':key,'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify({database:4,type:'native',native:{query:'SELECT * FROM restaurant'}}),
       redirect:'error',
       signal:controller.signal
     });}finally{clearTimeout(timer);}
@@ -54,7 +59,18 @@ export default async function handler(req,res){
     const raw=await upstream.text();
     if(raw.length>5000000)return res.status(502).json({error:'Provider response is too large.'});
     let data;try{data=JSON.parse(raw);}catch{return res.status(502).json({error:'Provider returned invalid JSON.'});}
-    return res.status(200).json({data});
+    if(data.status==='failed'||data.error)return res.status(502).json({error:'Metabase query failed: '+String(data.error||'query not permitted').slice(0,250)});
+    const cols=data.data?.cols||[];
+    const rows=data.data?.rows||[];
+    if(!Array.isArray(cols)||!Array.isArray(rows))return res.status(502).json({error:'Metabase did not return data.cols and data.rows.'});
+    const objects=rows.map(row=>Object.fromEntries(cols.map((c,i)=>[String(c.name||c.display_name||'column_'+i).toLowerCase(),row[i]])));
+    const find=(obj,...names)=>{for(const name of names){const value=obj[name];if(value!==null&&value!==undefined&&value!=='')return value;}return undefined};
+    const restaurants=objects.map(o=>({
+      id:find(o,'id','restaurant_id','restaurantid'),
+      name:find(o,'name','restaurant_name','restaurantname','location_name'),
+      frequency:find(o,'payroll_frequency','frequency')||'Not set'
+    })).filter(r=>r.id!==undefined&&r.name!==undefined);
+    return res.status(200).json({data:{restaurants,runs:[],buddies:[]},metadata:{returnedRows:rows.length,mappedRestaurants:restaurants.length,columns:cols.map(c=>c.name),source:'Metabase database 4 / restaurant'}});
   }catch(err){
     return res.status(502).json({error:err?.name==='AbortError'?'Provider request timed out.':'Could not contact the provider. Check its HTTPS URL and access rules.'});
   }
