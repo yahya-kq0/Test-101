@@ -91,7 +91,7 @@ export default async function handler(req,res) {
   if(req.method!=='POST')return failure(res,405,'METHOD','Use POST.');
   const input=req.body||{};
   const mode=input.mode==='password'?'password':'key';
-  const action=input.action==='fetch'?'fetch':'test';
+  const action=['fetch','discover'].includes(input.action)?input.action:'test';
   try {
     const headers={};
     if(mode==='key'){
@@ -112,6 +112,15 @@ export default async function handler(req,res) {
     }
     const me=await query('/api/user/current','GET',headers);
     const identity={name:me.common_name||me.first_name||me.email||'Metabase user'};
+    if(action==='discover'){
+      const list=await query('/api/card','GET',headers);
+      if(!Array.isArray(list))return failure(res,502,'CARD_LIST','Metabase did not return a saved-question list.');
+      return res.status(200).json({
+        authenticated:true,identity,
+        cards:list.filter(c=>c&&Number.isSafeInteger(c.id)&&typeof c.name==='string'&&!c.archived)
+          .slice(0,150).map(c=>({id:c.id,name:c.name}))
+      });
+    }
     if(action==='test')return res.status(200).json({
       authenticated:true,identity,message:'Metabase authentication succeeded. Data permissions are checked when importing.'
     });
