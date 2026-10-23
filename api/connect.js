@@ -108,22 +108,10 @@ export default async function handler(req,res) {
   try {
     const base=providerBase(input.url);
     const headers={};
-    if(mode==='key'){
-      if(typeof input.key!=='string'||!input.key.trim()||input.key.length>4096)
-        return failure(res,400,'MISSING_KEY','Enter your Metabase API key.');
-      headers['X-API-Key']=input.key.trim();
-    }else{
-      if(typeof input.username!=='string'||!input.username.trim()||
-         typeof input.password!=='string'||!input.password||
-         input.username.length>320||input.password.length>4096)
-        return failure(res,400,'MISSING_LOGIN','Enter your Metabase username and password.');
-      const session=await query(base,'/api/session','POST',{},{
-        username:input.username.trim(),password:input.password
-      });
-      if(typeof session.id!=='string'||!session.id)
-        return failure(res,502,'SESSION','Metabase did not return a login session.');
-      headers['X-Metabase-Session']=session.id;
-    }
+    if(mode!=='key')return failure(res,400,'KEY_ONLY','This dashboard uses X-API-Key authentication. A Metabase password alone cannot connect.');
+    if(typeof input.key!=='string'||!input.key.trim()||input.key.length>4096)
+      return failure(res,400,'MISSING_KEY','Enter your Metabase X-API-Key.');
+    headers['X-API-Key']=input.key.trim();
     const me=await query(base,'/api/user/current','GET',headers);
     const identity={name:me.common_name||me.first_name||me.email||'Metabase user'};
     if(action==='discover'){
